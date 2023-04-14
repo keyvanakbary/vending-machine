@@ -3,93 +3,82 @@ package com.keyvanakbary;
 import java.util.*;
 
 public class VendingMachine {
-    private Map<Coin, Integer> bank = new HashMap<>();
-    private Money money = Money.empty();
-    private final Map<Integer, Item> items = new HashMap<>();
-    private int amount = 0;
+    private Money machineMoney;
+    private Money insertedMoney = Money.empty();
+    private final Map<Integer, Item> items;
 
-    public VendingMachine configureCoins(Coin coin, int amount) {
-        bank.put(coin, amount);
-        money.add(coin, amount);
-
-        return this;
+    private VendingMachine(Money money, Map<Integer, Item> items) {
+        this.machineMoney = money;
+        this.items = items;
     }
 
-    public VendingMachine configureItem(int code, Item item) {
-        items.put(code, item);
-
-        return this;
+    public void insert(Money m) {
+        insertedMoney.add(m);
     }
 
-    public void insert(List<Coin> coins) {
-        amount = totalCents(coins);
-//        amount = money.value();
-
-        // add coins to the bank
-        money.add(coins.toArray(Coin[]::new));
-//        amount = money.value();
-        coins.forEach(coin -> bank.put(coin, bank.getOrDefault(coin, 0) + 1));
-    }
-
-    public List<Coin> buy(int itemCode) {
+    public Money buy(int itemCode) {
         return buy(itemCode, false);
     }
 
-    public List<Coin> forceBuy(int itemCode) {
+    public Money forceBuy(int itemCode) {
         return buy(itemCode, true);
     }
 
-    private List<Coin> buy(int itemCode, boolean keepChange) {
+    private Money buy(int itemCode, boolean keepChange) {
         if (!items.containsKey(itemCode)) {
             throw new ItemNotFound();
         }
 
-        int cents = items.get(itemCode).price();
+        int amount = items.get(itemCode).price();
 
-        if (amount - cents < 0) {
+        int insertedAmount = insertedMoney.amount();
+        if (insertedAmount - amount < 0) {
             throw new InsufficientFunds();
         }
 
-        int changeAmount = amount - cents;
-        List<Coin> changeCoins = new ArrayList<>();
-        Money changeCoins2 = Money.empty();
-        Map<Coin, Integer> bankCopy = new HashMap<>(bank);
-        Money moneyCopy = Money.from(money);
+        Money money = Money.from(machineMoney).add(insertedMoney);
 
-        for (Coin coin: availableSortedCoins()) {
-            int numCoins = bankCopy.getOrDefault(coin, 0);
-            while (coin.cents() <= changeAmount && numCoins > 0) {
-                changeAmount -= coin.cents();
-                numCoins--;
-                changeCoins.add(coin);
-                changeCoins2.add(coin);
-                bankCopy.put(coin, numCoins);
-                moneyCopy.remove(coin);
-            }
-        }
-
-        if (!keepChange && changeAmount != 0) {
+        int changeAmount = insertedAmount - amount;
+        Money change = money.changeFor(changeAmount);
+        if (!keepChange && changeAmount > change.amount()) {
             throw new NotEnoughChange();
         }
 
-        // if everything goes well change the state
-        bank = bankCopy;
-        money = Money.from(moneyCopy);
-        amount -= cents;
+        // if everything goes well, change the state
+        machineMoney = money;
+        insertedMoney = Money.empty();
 
-//        return money.coins();
-
-        return changeCoins;
+        return change;
     }
 
-    private List<Coin> availableSortedCoins() {
-        return bank.keySet().stream()
-                .sorted((c1, c2) -> Integer.compare(c2.cents(), c1.cents()))
-                .toList();
+    public static VendingMachineBuilder builder() {
+        return new VendingMachineBuilder();
     }
 
-    private static int totalCents(List<Coin> coins) {
-        return coins.stream().map(Coin::cents).reduce(0, Integer::sum);
+    public Money cancel() {
+        Money money = insertedMoney;
+        insertedMoney = Money.empty();
+
+        return money;
+    }
+
+    static class VendingMachineBuilder {
+        private Money money = Money.empty();
+        private final Map<Integer, Item> items = new HashMap<>();
+
+        public VendingMachineBuilder withMoney(Money money) {
+            this.money = money;
+            return this;
+        }
+
+        public VendingMachineBuilder withItem(int code, Item item) {
+            this.items.put(code, item);
+            return this;
+        }
+
+        public VendingMachine build() {
+            return new VendingMachine(money, items);
+        }
     }
 
     public static class ItemNotFound extends RuntimeException {}

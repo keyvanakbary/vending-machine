@@ -9,7 +9,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
-import java.util.List;
 import java.util.stream.Stream;
 
 import static com.keyvanakbary.Coin.*;
@@ -21,10 +20,11 @@ public class VendingMachineTest {
 
     @BeforeEach
     void setUp() {
-        machine = new VendingMachine()
-                .configureItem(1, new Item("Chips", 4))
-                .configureItem(2, new Item("Coca Cola", 12))
-                .configureItem(3, new Item("Chocolate Bar", 15));
+        machine = VendingMachine.builder()
+                .withItem(1, new Item("Chips", 4))
+                .withItem(2, new Item("Coca Cola", 12))
+                .withItem(3, new Item("Chocolate Bar", 15))
+                .build();
     }
 
     @Test
@@ -34,16 +34,16 @@ public class VendingMachineTest {
 
     @Test
     void buyingWithoutChangeShouldFail() {
-        machine.insert(List.of(FIVE_CENTS));
+        machine.insert(Money.from(FIVE_CENTS));
 
         assertThrows(NotEnoughChange.class, () -> machine.buy(1));
     }
 
     @Test
     void forceBuyingWithoutChangeShouldSucceed() {
-        machine.insert(List.of(FIVE_CENTS));
+        machine.insert(Money.from(FIVE_CENTS));
 
-        assertEquals(List.of(), machine.forceBuy(1));
+        assertEquals(Money.empty(), machine.forceBuy(1));
     }
 
     @Test
@@ -53,12 +53,18 @@ public class VendingMachineTest {
 
     @ParameterizedTest
     @MethodSource("changeSourceProvider")
-    void buyingAnItemShouldReturnChange(List<Coin> insertCoins, int itemCode, List<Coin> expectedChange) {
-        machine.configureCoins(ONE_CENT, 100)
-                .configureCoins(TWO_CENTS, 100)
-                .configureCoins(FIVE_CENTS, 100);
+    void buyingAnItemShouldReturnChange(Money money, int itemCode, Money expectedChange) {
+        machine = VendingMachine.builder()
+                .withMoney(Money.empty()
+                    .add(ONE_CENT, 100)
+                    .add(TWO_CENTS, 100)
+                    .add(FIVE_CENTS, 100))
+                .withItem(1, new Item("Chips", 4))
+                .withItem(2, new Item("Coca Cola", 12))
+                .withItem(3, new Item("Chocolate Bar", 15))
+                .build();
 
-        machine.insert(insertCoins);
+        machine.insert(money);
 
         assertEquals(expectedChange, machine.buy(itemCode));
     }
@@ -66,20 +72,32 @@ public class VendingMachineTest {
     private static Stream<Arguments> changeSourceProvider() {
         return Stream.of(
                 Arguments.of(
-                        List.of(FIVE_CENTS, FIVE_CENTS, FIVE_CENTS),
+                        Money.from(FIVE_CENTS, FIVE_CENTS, FIVE_CENTS),
                         2,
-                        List.of(TWO_CENTS, ONE_CENT)
+                        Money.from(ONE_CENT, TWO_CENTS)
                 ),
                 Arguments.of(
-                        List.of(FIVE_CENTS, FIVE_CENTS, FIVE_CENTS),
+                        Money.from(FIVE_CENTS, FIVE_CENTS, FIVE_CENTS),
                         3,
-                        List.of()
+                        Money.empty()
                 ),
                 Arguments.of(
-                        List.of(FIVE_CENTS, FIVE_CENTS, FIVE_CENTS, TWO_CENTS),
+                        Money.from(FIVE_CENTS, FIVE_CENTS, FIVE_CENTS, TWO_CENTS),
                         2,
-                        List.of(FIVE_CENTS)
+                        Money.from(FIVE_CENTS)
+                ),
+                Arguments.of(
+                        Money.from(TEN_CENTS, FIVE_CENTS, FIVE_CENTS, FIVE_CENTS),
+                        3,
+                        Money.from(TEN_CENTS)
                 )
         );
+    }
+
+    @Test
+    void cancelShouldReturnInsertedMoney() {
+        machine.insert(Money.from(TWO_CENTS, TWO_CENTS, ONE_CENT));
+
+        assertEquals(Money.from(TWO_CENTS, TWO_CENTS, ONE_CENT), machine.cancel());
     }
 }
